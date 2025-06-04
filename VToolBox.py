@@ -1,6 +1,7 @@
 import tkinter as tk
 import logging
 from MKDIR import MKDIRApp
+from Excelwriter import ExcelWriterWindow
 from debuglog import show_debug_log
 from tkinter import filedialog
 
@@ -15,7 +16,10 @@ class ToolboxWindow(tk.Toplevel):
         logger.info("Toolbox module gestart")
 
         mkdir_button = tk.Button(self, text="Open MKDIR", command=self.open_mkdir_window)
-        mkdir_button.pack(pady=40)
+        mkdir_button.pack(pady=10)
+
+        excel_writer_btn = tk.Button(self, text="ExcelWriter", command=self.open_excel_writer)
+        excel_writer_btn.pack(pady=10)
 
         self.bind('<Alt-l>', lambda e: show_debug_log(self))
 
@@ -25,8 +29,8 @@ class ToolboxWindow(tk.Toplevel):
         win.lift()
         win.focus_force()
 
-    def some_dialog_method(self):
-        result = filedialog.askopenfilename(parent=self)
-        # ... your logic ...
-        self.lift()
-        self.focus_force()
+    def open_excel_writer(self):
+        logger.info("ExcelWriter tool geopend vanuit Toolbox")
+        win = ExcelWriterWindow(self)
+        win.lift()
+        win.focus_force()
