@@ -6,13 +6,15 @@ StruxureGuard is a Python-based project designed to help me automate our Struxur
 
 - Write to our existing Excel template
 - Directory creation
-- 
+- Generate Reports (50% done)
 
 
 ## Future Features
 
 - Read data from EBO platform
-- 
+- Write data from "Raport Generator" to Excel
+- Replace Excel by StruxureGuard
+- Generate report pdf
 
 ## Installation
 
