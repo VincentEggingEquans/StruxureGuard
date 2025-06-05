@@ -12,6 +12,8 @@ class ToolboxWindow(tk.Toplevel):
         super().__init__(master)
         self.title("Vincent's Toolbox")
         self.geometry("300x150")
+        # Remove or set always-on-top to False
+        self.attributes('-topmost', False)
 
         logger.info("Toolbox module gestart")
 

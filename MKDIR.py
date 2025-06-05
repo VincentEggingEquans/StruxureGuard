@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 class MKDIRApp(tk.Toplevel):
     def __init__(self, master=None):
         super().__init__(master)
-        self.title("MKDIR Module")
+        self.title("MKDIR")
+        # Remove or set always-on-top to False
+        self.attributes('-topmost', False)
         self.geometry("700x450")
 
         logger.info("MKDIR module gestart")
