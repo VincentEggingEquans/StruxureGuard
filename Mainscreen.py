@@ -1,5 +1,6 @@
 # mainscreen.py
 import tkinter as tk
+from tkinter import ttk
 import logging
 from VToolBox import ToolboxWindow
 from debuglog import show_debug_log, TkinterLogHandler
@@ -13,7 +14,7 @@ class StruxureGuardApp(tk.Tk):
         self.geometry("400x300")
 
         # Create and hide the toolbox button
-        self.toolbox_button = tk.Button(self, text="Vincent's Toolbox", command=self.open_toolbox_window)
+        self.toolbox_button = ttk.Button(self, text="Vincent's Toolbox", command=self.open_toolbox_window)
         self.toolbox_button.pack_forget()
 
         # Keybindings

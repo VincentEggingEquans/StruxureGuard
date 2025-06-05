@@ -27,35 +27,35 @@ class MKDIRApp(tk.Toplevel):
 
         base_frame = tk.Frame(self)
         base_frame.pack(pady=5, padx=10)
-        tk.Label(base_frame, text="Doelmap:").pack(side='left')
+        ttk.Label(base_frame, text="Doelmap:").pack(side='left')
         self.base_entry = tk.Entry(base_frame, textvariable=self.base_path, width=80)
         self.base_entry.pack(side='left', padx=5)
-        tk.Button(base_frame, text="Bladeren", command=self.browse_base_path).pack(side='right')
+        ttk.Button(base_frame, text="Bladeren", command=self.browse_base_path).pack(side='right')
 
         # Mapnamen invoer
-        self.label = tk.Label(self, text="Voer mapnamen in (één per regel):")
+        self.label = ttk.Label(self, text="Voer mapnamen in (één per regel):")
         self.label.pack(pady=5)
 
         self.textbox = tk.Text(self, height=12, width=60)
         self.textbox.pack(pady=5)
 
         self.copy_var = tk.IntVar()
-        self.copy_check = tk.Checkbutton(self, text="Kopieer bestand naar elke map", variable=self.copy_var, command=self.toggle_file_button)
+        self.copy_check = ttk.Checkbutton(self, text="Kopieer bestand naar elke map", variable=self.copy_var, command=self.toggle_file_button)
         self.copy_check.pack()
 
-        self.file_frame = tk.Frame(self)
+        self.file_frame = ttk.Frame(self)
         self.file_frame.pack(pady=5)
 
-        self.file_button = tk.Button(self.file_frame, text="Kies bestand", command=self.select_file, state=tk.DISABLED)
+        self.file_button = ttk.Button(self.file_frame, text="Kies bestand", command=self.select_file, state=tk.DISABLED)
         self.file_button.pack(side=tk.LEFT)
 
-        self.selected_file_label = tk.Label(self.file_frame, text="Geen bestand geselecteerd")
+        self.selected_file_label = ttk.Label(self.file_frame, text="Geen bestand geselecteerd")
         self.selected_file_label.pack(side=tk.LEFT, padx=5)
 
         self.progress = ttk.Progressbar(self, orient="horizontal", length=500, mode="determinate")
         self.progress.pack(pady=10)
 
-        self.run_button = tk.Button(self, text="Start", command=self.run)
+        self.run_button = ttk.Button(self, text="Start", command=self.run)
         self.run_button.pack(pady=10)
 
         self.selected_file = None
