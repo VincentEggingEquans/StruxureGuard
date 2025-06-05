@@ -13,16 +13,24 @@ class ExcelWriterWindow(tk.Toplevel):
     def __init__(self, master=None):
         super().__init__(master)
         self.title("ExcelWriter")
-        self.geometry("750x900")
+        self.geometry("800x900")
         self.attributes('-topmost', False)
 
-        ttk.Label(self, text="Select Excel Template:").pack(pady=5)
-        path_frame = ttk.Frame(self)
-        path_frame.pack(pady=5, fill='x', padx=10)
-        self.template_path_var = tk.StringVar()
-        ttk.Entry(path_frame, textvariable=self.template_path_var, width=55).pack(side='left', padx=(0,5))
-        ttk.Button(path_frame, text="Browse", command=self.browse_template).pack(side='left')
+        # Frame for template path + browse + password
+        path_pass_frame = ttk.Frame(self)
+        path_pass_frame.pack(pady=5, fill='x', padx=10)
 
+        ttk.Label(path_pass_frame, text="Select Excel Template:").grid(row=0, column=0, sticky='w')
+        self.template_path_var = tk.StringVar()
+        ttk.Entry(path_pass_frame, textvariable=self.template_path_var, width=50).grid(row=1, column=0, sticky='w', padx=(0,5))
+
+        ttk.Button(path_pass_frame, text="Browse", command=self.browse_template).grid(row=1, column=1, sticky='w')
+
+        ttk.Label(path_pass_frame, text="Password:").grid(row=0, column=2, sticky='w', padx=(20,0))
+        self.password_var = tk.StringVar()
+        ttk.Entry(path_pass_frame, textvariable=self.password_var, show='*', width=20).grid(row=1, column=2, sticky='w', padx=(20,0))
+
+        # Checkboxes
         self.chk_servers_var = tk.BooleanVar(value=False)
         self.chk_trendstorage_var = tk.BooleanVar(value=False)
         self.chk_cpu_var = tk.BooleanVar(value=False)
@@ -38,6 +46,7 @@ class ExcelWriterWindow(tk.Toplevel):
         ttk.Checkbutton(chk_frame, text="Write Memory data", variable=self.chk_memory_var).grid(row=3, column=0, sticky='w')
         ttk.Checkbutton(chk_frame, text="Write all 'Alle Benodigde licenties aanwezig' (C35 checkboxes)", variable=self.chk_all_licenses_var).grid(row=4, column=0, sticky='w')
 
+        # Text areas
         self.text_areas = {}
         for label in ["Servers", "TrendStorage Geheugen", "CPU", "Memory"]:
             self._add_text_area(label)
@@ -74,6 +83,8 @@ class ExcelWriterWindow(tk.Toplevel):
         if not os.path.isfile(path):
             self.after(0, self._handle_error, "Please select a valid Excel file.")
             return
+
+        password = self.password_var.get()  # Get password from text box
 
         def get_lines(text_widget):
             content = text_widget.get("1.0", tk.END).strip()
@@ -141,6 +152,33 @@ class ExcelWriterWindow(tk.Toplevel):
 
             wb = app.books.open(edit_path)
 
+            # Helper to unprotect/protect sheets with password
+            def unprotect_sheet(sheet):
+                try:
+                    sheet.api.Unprotect(Password=password)
+                    logger.debug(f"Unprotected sheet {sheet.name} with password")
+                except Exception as e:
+                    logger.warning(f"Could not unprotect sheet {sheet.name} with password: {e}")
+
+            def protect_sheet(sheet):
+                try:
+                    sheet.api.Protect(Password=password)
+                    logger.debug(f"Protected sheet {sheet.name} with password")
+                except Exception as e:
+                    logger.warning(f"Could not protect sheet {sheet.name} with password: {e}")
+
+            def _set_checkbox(sheet, checkbox_name, sheet_name):
+                try:
+                    shape = sheet.api.Shapes(checkbox_name)
+                    shape.OLEFormat.Object.Value = True
+                    logger.info(f"Checked {checkbox_name} on {sheet_name}")
+                    return True
+                except Exception as e:
+                    logger.warning(f"Failed to check {checkbox_name} on {sheet_name}: {e}")
+                    return False
+
+            self._set_checkbox = _set_checkbox
+
             def process_servers(lines):
                 logger.debug(f"[Servers] Processing {len(lines)} lines")
                 for idx, line in enumerate(lines):
@@ -151,15 +189,13 @@ class ExcelWriterWindow(tk.Toplevel):
                     except Exception as e:
                         logger.warning(f"[Servers] Sheet not found: {sheet_name} - {e}")
                         continue
-                    try:
-                        sheet.api.Unprotect()
-                    except Exception:
-                        logger.debug(f"[Servers] Sheet already unprotected or unprotect failed for {sheet_name}")
+                    unprotect_sheet(sheet)
                     try:
                         sheet.range("B2").value = line
                         logger.info(f"[Servers] Written '{line}' to {sheet_name} B2")
                     except Exception as e:
                         logger.error(f"[Servers] Failed to write to {sheet_name} B2: {e}")
+                    protect_sheet(sheet)
 
             def process_trendstorage(lines):
                 nonlocal warning_triggered, checkboxes_checked
@@ -172,6 +208,8 @@ class ExcelWriterWindow(tk.Toplevel):
                     except Exception as e:
                         logger.warning(f"[TrendStorage] Sheet not found: {sheet_name} - {e}")
                         continue
+
+                    unprotect_sheet(sheet)
 
                     clean_line = line.replace('.', '')
                     numeric_str = clean_line.replace(',', '.')
@@ -187,11 +225,6 @@ class ExcelWriterWindow(tk.Toplevel):
                     logger.info(f"[TrendStorage] Writing to {sheet_name} J36: {value}")
 
                     try:
-                        sheet.api.Unprotect()
-                    except Exception:
-                        logger.debug(f"[TrendStorage] Sheet already unprotected or unprotect failed for {sheet_name}")
-
-                    try:
                         sheet.range("J36").value = value
                     except Exception as e:
                         logger.error(f"[TrendStorage] Failed to write to {sheet_name} J36: {e}")
@@ -199,7 +232,6 @@ class ExcelWriterWindow(tk.Toplevel):
                     checkbox_c36 = "CheckBox_C36"
                     checkbox_e36 = "CheckBox_E36"
 
-                    # If percentage >= 80% check both C36 and E36, else only C36
                     if percentage >= 80:
                         warning_triggered = True
                         for cb_name in (checkbox_c36, checkbox_e36):
@@ -208,6 +240,8 @@ class ExcelWriterWindow(tk.Toplevel):
                     else:
                         if self._set_checkbox(sheet, checkbox_c36, sheet_name):
                             checkboxes_checked.append(f"{sheet_name}:{checkbox_c36}")
+
+                    protect_sheet(sheet)
 
             def process_cpu_memory_combined(cpu_lines, memory_lines):
                 nonlocal warning_triggered
@@ -221,16 +255,11 @@ class ExcelWriterWindow(tk.Toplevel):
                         logger.warning(f"[CPU/Memory Combined] Sheet not found: {sheet_name} - {e}")
                         continue
 
-                    try:
-                        sheet.api.Unprotect()
-                    except Exception:
-                        logger.debug(f"[CPU/Memory Combined] Sheet already unprotected or unprotect failed for {sheet_name}")
+                    unprotect_sheet(sheet)
 
-                    # Extract values safely and format
                     cpu_val_raw = cpu_lines[idx] if idx < len(cpu_lines) else ""
                     mem_val_raw = memory_lines[idx] if idx < len(memory_lines) else ""
 
-                    # Clean and convert to float if possible for warning check
                     def parse_percentage(val):
                         try:
                             return float(val.replace('%', '').replace(',', '.').strip())
@@ -240,8 +269,6 @@ class ExcelWriterWindow(tk.Toplevel):
                     cpu_val_float = parse_percentage(cpu_val_raw)
                     mem_val_float = parse_percentage(mem_val_raw)
 
-                    # Compose text in the requested format
-                    # If input is missing, show 0.0%
                     cpu_text = f"{cpu_val_float:.2f} %" if cpu_val_raw else "0.00 %"
                     mem_text = f"{mem_val_float:.2f} %" if mem_val_raw else "0.00 %"
 
@@ -256,7 +283,6 @@ class ExcelWriterWindow(tk.Toplevel):
                     checkbox_c39 = "CheckBox_C39"
                     checkbox_e39 = "CheckBox_E39"
 
-                    # If any CPU or Memory > 80, check both C39 and E39, else only C39
                     if cpu_val_float > 80 or mem_val_float > 80:
                         warning_triggered = True
                         for cb_name in (checkbox_c39, checkbox_e39):
@@ -264,30 +290,11 @@ class ExcelWriterWindow(tk.Toplevel):
                     else:
                         self._set_checkbox(sheet, checkbox_c39, sheet_name)
 
-            def process_servers(lines):
-                logger.debug(f"[Servers] Processing {len(lines)} lines")
-                for idx, line in enumerate(lines):
-                    sheet_name = "Checklist Regelkast" if idx == 0 else f"Checklist Regelkast ({idx + 1})"
-                    logger.debug(f"[Servers] Target sheet: {sheet_name}, value: {line}")
-                    try:
-                        sheet = wb.sheets[sheet_name]
-                    except Exception as e:
-                        logger.warning(f"[Servers] Sheet not found: {sheet_name} - {e}")
-                        continue
-                    try:
-                        sheet.api.Unprotect()
-                    except Exception:
-                        logger.debug(f"[Servers] Sheet already unprotected or unprotect failed for {sheet_name}")
-                    try:
-                        sheet.range("B2").value = line
-                        logger.info(f"[Servers] Written '{line}' to {sheet_name} B2")
-                    except Exception as e:
-                        logger.error(f"[Servers] Failed to write to {sheet_name} B2: {e}")
+                    protect_sheet(sheet)
 
             def process_all_licenses():
                 if not self.chk_all_licenses_var.get():
                     return
-                # This option checks ALL C35 checkboxes on all relevant sheets
                 max_idx = max(len(servers_lines), len(trendstorage_lines), len(cpu_lines), len(memory_lines), 1)
                 for idx in range(max_idx):
                     sheet_name = "Checklist Regelkast" if idx == 0 else f"Checklist Regelkast ({idx + 1})"
@@ -296,27 +303,11 @@ class ExcelWriterWindow(tk.Toplevel):
                     except Exception as e:
                         logger.warning(f"[All Licenses] Sheet not found: {sheet_name} - {e}")
                         continue
-                    try:
-                        sheet.api.Unprotect()
-                    except Exception:
-                        logger.debug(f"[All Licenses] Sheet already unprotected or unprotect failed for {sheet_name}")
-
+                    unprotect_sheet(sheet)
                     checkbox_c35 = "CheckBox_C35"
                     if self._set_checkbox(sheet, checkbox_c35, sheet_name):
                         logger.info(f"[All Licenses] Checked {checkbox_c35} on {sheet_name}")
-
-            # Helper to set checkbox - assumes checkboxes are FormControls with Name like CheckBox_C36, etc.
-            def _set_checkbox(sheet, checkbox_name, sheet_name):
-                try:
-                    shape = sheet.api.Shapes(checkbox_name)
-                    shape.OLEFormat.Object.Value = True
-                    logger.info(f"Checked {checkbox_name} on {sheet_name}")
-                    return True
-                except Exception as e:
-                    logger.warning(f"Failed to check {checkbox_name} on {sheet_name}: {e}")
-                    return False
-
-            self._set_checkbox = _set_checkbox
+                    protect_sheet(sheet)
 
             if self.chk_servers_var.get():
                 process_servers(servers_lines)
@@ -324,7 +315,6 @@ class ExcelWriterWindow(tk.Toplevel):
                 process_trendstorage(trendstorage_lines)
             if self.chk_cpu_var.get() or self.chk_memory_var.get():
                 process_cpu_memory_combined(cpu_lines, memory_lines)
-
             if self.chk_all_licenses_var.get():
                 process_all_licenses()
 
