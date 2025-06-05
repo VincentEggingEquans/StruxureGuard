@@ -3,16 +3,13 @@ from tkinter import ttk
 import logging
 from VToolBox import ToolboxWindow
 from debuglog import show_debug_log, TkinterLogHandler
+from RapportageGenerator import RapportageGenerator
 
 logger = logging.getLogger(__name__)
 
 class StruxureGuardApp(tk.Tk):
     """
     Main application window for StruxureGuard.
-
-    Inherits from tkinter.Tk and provides the main UI elements,
-    including a hidden toolbox button activated by pressing F8,
-    and a debug log window accessible with Alt+L.
     """
 
     def __init__(self):
@@ -21,47 +18,43 @@ class StruxureGuardApp(tk.Tk):
         keybindings, and logging.
         """
         super().__init__()
-        self.title("StruxureGuard Startpagina")
+        self.title("StruxureGuard")
         self.geometry("400x300")
 
-        # Create and hide the toolbox button
-        self.toolbox_button = ttk.Button(self, text="Vincent's Toolbox", command=self.open_toolbox_window)
-        self.toolbox_button.pack_forget()
+        # Rapportage Generator knop
+        self.report_button = ttk.Button(self, text="Rapportage Generator", command=self.open_report_generator)
+        self.report_button.pack(pady=20)
 
         # Keybindings
-        self.bind('<F8>', self.show_toolbox)
+        self.bind('<F8>', self.open_toolbox_window)
         self.bind('<Alt-l>', lambda e: show_debug_log(self))
 
         # Setup logging to GUI
         self.log_handler = TkinterLogHandler()
         self.log_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-        logging.getLogger().addHandler(self.log_handler)  # Attach to root logger
-        logging.getLogger().setLevel(logging.INFO)        # Ensure INFO level logs are shown
+        logging.getLogger().addHandler(self.log_handler)
+        logging.getLogger().setLevel(logging.INFO)
 
         logger.info("StruxureGuard hoofdvenster gestart")
 
-    def show_toolbox(self, event=None):
+    def open_toolbox_window(self, event=None):
         """
-        Show the hidden toolbox button when F8 is pressed.
-
-        Args:
-            event (tk.Event, optional): The event that triggered the method. Defaults to None.
+        Open the Toolbox window.
         """
-        self.toolbox_button.pack(pady=20)
-        logger.info("F8 ingedrukt - Toolbox knop zichtbaar")
-
-    def open_toolbox_window(self):
-        """
-        Open the Toolbox window when the toolbox button is clicked.
-        """
-        logger.info("Toolbox venster geopend vanuit Mainscreen")
+        logger.info("Toolbox venster geopend (via F8 of button)")
         win = ToolboxWindow(self)
         win.lift()
         win.focus_force()
 
+    def open_report_generator(self):
+        """
+        Open de Rapportage Generator.
+        """
+        logger.info("Rapportage Generator venster geopend")
+        win = RapportageGenerator(self)  # Use the correct class name
+        win.lift()
+        win.focus_force()
+
 if __name__ == "__main__":
-    """
-    Run the StruxureGuard application.
-    """
     app = StruxureGuardApp()
     app.mainloop()

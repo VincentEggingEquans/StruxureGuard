@@ -29,7 +29,7 @@ class MKDIRApp(tk.Toplevel):
             master (tk.Widget, optional): Parent widget. Defaults to None.
         """
         super().__init__(master)
-        self.title("MKDIR")
+        self.title("StruxureGuard MKDIR")
         self.attributes('-topmost', False)
         self.geometry("700x450")
 
