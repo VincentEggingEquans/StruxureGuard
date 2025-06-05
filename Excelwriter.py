@@ -17,7 +17,19 @@ if not any(isinstance(h, TkinterLogHandler) for h in logging.getLogger().handler
     logging.getLogger().setLevel(logging.INFO)
 
 class ExcelWriterWindow(tk.Toplevel):
+    """
+    A Tkinter Toplevel window that provides a GUI to write data into an Excel template,
+    with options to select an Excel file, input various data sections, and write to the workbook
+    using xlwings. Supports password-protected sheets and checkboxes handling.
+    """
+
     def __init__(self, master=None):
+        """
+        Initialize the ExcelWriterWindow UI components, variables, and event bindings.
+
+        Args:
+            master (tk.Widget, optional): Parent widget. Defaults to None.
+        """
         super().__init__(master)
         self.title("ExcelWriter")
         self.geometry("800x900")
@@ -37,7 +49,7 @@ class ExcelWriterWindow(tk.Toplevel):
         self.password_var = tk.StringVar()
         ttk.Entry(path_pass_frame, textvariable=self.password_var, show='*', width=20).grid(row=1, column=2, sticky='w', padx=(20,0))
 
-        # Checkboxes
+        # Checkboxes for selecting which sections to write
         self.chk_vars = {
             "servers": tk.BooleanVar(value=False),
             "trendstorage": tk.BooleanVar(value=False),
@@ -57,21 +69,20 @@ class ExcelWriterWindow(tk.Toplevel):
         for i, (label, key) in enumerate(chk_labels):
             ttk.Checkbutton(chk_frame, text=label, variable=self.chk_vars[key]).grid(row=i, column=0, sticky='w')
 
-        # Text areas
+        # Text areas for data input
         self.text_areas = {}
         for label in ["Servers", "TrendStorage Geheugen", "CPU", "Memory"]:
             self._add_text_area(label)
 
-        # Progress bar style (only affects the progress bar, not the rest of the window)
+        # Configure progress bar style and widget (initially hidden)
         style = ttk.Style(self)
         style.theme_use(style.theme_use())  # Use current theme, do not force 'default'
         style.configure(
             "Custom.Horizontal.TProgressbar",
-            troughcolor=style.lookup('TFrame', 'background'),  # Match window bg
-            background='#4a90e2',  # Blue bar
+            troughcolor=style.lookup('TFrame', 'background'),
+            background='#4a90e2',
             thickness=20
         )
-
         self.progress = ttk.Progressbar(
             self,
             mode='indeterminate',
@@ -80,6 +91,7 @@ class ExcelWriterWindow(tk.Toplevel):
         self.progress.pack(pady=10, fill='x', padx=20)
         self.progress.pack_forget()
 
+        # Button to start Excel writing
         self.write_button = ttk.Button(self, text="Write to Excel", command=self.start_edit_excel_thread)
         self.write_button.pack(pady=10)
 
@@ -88,6 +100,12 @@ class ExcelWriterWindow(tk.Toplevel):
         logger.info("ExcelWriterWindow UI setup complete")
 
     def _add_text_area(self, label_text):
+        """
+        Add a labeled text widget for user data input.
+
+        Args:
+            label_text (str): The label text for the text area.
+        """
         ttk.Label(self, text=label_text + ":").pack(pady=5)
         text_area = tk.Text(self, height=6, width=80)
         text_area.pack(pady=5, padx=10)
@@ -95,6 +113,10 @@ class ExcelWriterWindow(tk.Toplevel):
         logger.debug(f"Text area added for '{label_text}'")
 
     def browse_template(self):
+        """
+        Open a file dialog for the user to select an Excel template file.
+        Sets the chosen path to the template_path_var variable.
+        """
         logger.info("Browse template dialog opened")
         path = filedialog.askopenfilename(
             parent=self,
@@ -107,6 +129,10 @@ class ExcelWriterWindow(tk.Toplevel):
             logger.info("No template selected")
 
     def start_edit_excel_thread(self):
+        """
+        Starts the Excel editing operation in a separate daemon thread,
+        disables the write button, and shows the progress bar.
+        """
         logger.info("Starting Excel edit thread")
         self.progress.pack(pady=10, fill='x', padx=20)
         self.progress.start(10)
@@ -114,6 +140,10 @@ class ExcelWriterWindow(tk.Toplevel):
         threading.Thread(target=self.edit_excel, daemon=True).start()
 
     def edit_excel(self):
+        """
+        Main logic to process inputs and write data into the Excel workbook.
+        Runs in a background thread to keep the UI responsive.
+        """
         logger.info("edit_excel started")
         path = self.template_path_var.get()
         if not os.path.isfile(path):
@@ -123,11 +153,13 @@ class ExcelWriterWindow(tk.Toplevel):
 
         password = self.password_var.get()
         logger.debug(f"Using password: {'*' * len(password)}")
+
+        # Helper to extract non-empty lines from text areas
         get_lines = lambda key: [
             line.strip() for line in self.text_areas[key].get("1.0", tk.END).strip().splitlines() if line.strip()
         ]
 
-        # Only get lines if checkbox is checked
+        # Extract data lines only if respective checkbox is selected
         servers_lines = get_lines("servers") if self.chk_vars["servers"].get() else []
         trendstorage_lines = get_lines("trendstorage geheugen") if self.chk_vars["trendstorage"].get() else []
         cpu_lines = get_lines("cpu") if self.chk_vars["cpu"].get() else []
@@ -140,7 +172,7 @@ class ExcelWriterWindow(tk.Toplevel):
             self.after(0, self._handle_error, "No valid lines found or no sections selected to write.")
             return
 
-        # Ask save option (UI thread)
+        # Prompt user for save option (overwrite or new file)
         save_option_event = threading.Event()
         self.overwrite_original = None
         def ask_save_option():
@@ -229,13 +261,27 @@ class ExcelWriterWindow(tk.Toplevel):
                     logger.warning(f"Failed to check {checkbox_name} on {sheet_name}: {e}")
                     return False
 
-            # Processors
             def process_lines(lines, cell, log_prefix, checkboxes, warn_threshold=None, value_func=None):
+                """
+                Process a list of lines, write data to Excel cells, and check checkboxes conditionally.
+
+                Args:
+                    lines (list): Lines of data to write.
+                    cell (str): Cell address to write to.
+                    log_prefix (str): Prefix for logging.
+                    checkboxes (list): Checkbox names to update.
+                    warn_threshold (float, optional): Threshold for warnings, if applicable.
+                    value_func (callable, optional): Function to transform line value before writing.
+
+                Returns:
+                    bool: True if processing completed, False if unprotect failed.
+                """
                 nonlocal warning_triggered
                 for idx, line in enumerate(lines):
                     logger.debug(f"Processing line {idx+1} for {log_prefix}: {line}")
                     sheet, sheet_name = get_sheet(idx)
-                    if not sheet: continue
+                    if not sheet:
+                        continue
                     try:
                         unprotect(sheet)
                     except RuntimeError:
@@ -254,154 +300,114 @@ class ExcelWriterWindow(tk.Toplevel):
                             percent = 0
                         if percent >= warn_threshold:
                             warning_triggered = True
-                            logger.warning(f"[{log_prefix}] Value {percent}% exceeds threshold {warn_threshold}% on {sheet_name}")
-                            for cb in checkboxes:
-                                set_checkbox(sheet, cb, sheet_name)
-                        else:
-                            set_checkbox(sheet, checkboxes[0], sheet_name)
+                            for chk in checkboxes:
+                                set_checkbox(sheet, chk, sheet_name)
                     else:
-                        set_checkbox(sheet, checkboxes[0], sheet_name)
+                        for chk in checkboxes:
+                            set_checkbox(sheet, chk, sheet_name)
                     protect(sheet)
                 return True
 
-            # Servers
+            # Servers data processing
             if servers_lines:
-                logger.info("Processing Servers lines")
-                process_lines(servers_lines, "B2", "Servers", ["CheckBox_C35"])
+                if not process_lines(
+                    servers_lines,
+                    "F8",
+                    "Servers",
+                    ["Check Box 33"]
+                ):
+                    return
 
-            # TrendStorage
+            # TrendStorage Geheugen data processing
             if trendstorage_lines:
-                logger.info("Processing TrendStorage lines")
-                def ts_value_func(line):
-                    clean = line.replace('.', '')
-                    numeric_str = clean.replace(',', '.')
-                    try:
-                        numeric_value = float(numeric_str)
-                    except ValueError:
-                        numeric_value = 0.0
-                    percentage = (numeric_value / 10_000_000) * 100
-                    perc_int = int(round(percentage))
-                    return f"{clean} van 10000000 - {perc_int}%"
-                process_lines(trendstorage_lines, "J36", "TrendStorage", ["CheckBox_C36", "CheckBox_E36"], warn_threshold=80, value_func=ts_value_func)
+                if not process_lines(
+                    trendstorage_lines,
+                    "F8",
+                    "TrendStorage Geheugen",
+                    ["Check Box 37"]
+                ):
+                    return
 
-            # CPU/Memory
-            if cpu_lines or memory_lines:
-                logger.info("Processing CPU/Memory lines")
-                max_len = max(len(cpu_lines), len(memory_lines))
-                for idx in range(max_len):
-                    logger.debug(f"Processing CPU/Memory line {idx+1}")
-                    sheet, sheet_name = get_sheet(idx)
-                    if not sheet: continue
-                    try:
-                        unprotect(sheet)
-                    except RuntimeError:
-                        return
-                    cpu_val = cpu_lines[idx] if idx < len(cpu_lines) else ""
-                    mem_val = memory_lines[idx] if idx < len(memory_lines) else ""
-                    def parse_pct(val):
-                        try:
-                            return float(val.replace('%', '').replace(',', '.').strip())
-                        except Exception:
-                            return 0.0
-                    cpu_float = parse_pct(cpu_val)
-                    mem_float = parse_pct(mem_val)
-                    cpu_text = f"{cpu_float:.2f} %" if cpu_val else "0.00 %"
-                    mem_text = f"{mem_float:.2f} %" if mem_val else "0.00 %"
-                    combined = f"CPU: {cpu_text} Memory: {mem_text}"
-                    try:
-                        sheet.range("J39").value = combined
-                        logger.info(f"[CPU/Memory] Written '{combined}' to {sheet_name} J39")
-                    except Exception as e:
-                        logger.error(f"[CPU/Memory] Failed to write to {sheet_name} J39: {e}")
-                    if cpu_float > 80 or mem_float > 80:
-                        warning_triggered = True
-                        logger.warning(f"CPU or Memory exceeds 80% on {sheet_name}")
-                        for cb in ("CheckBox_C39", "CheckBox_E39"):
-                            set_checkbox(sheet, cb, sheet_name)
-                    else:
-                        set_checkbox(sheet, "CheckBox_C39", sheet_name)
-                    protect(sheet)
+            # CPU data processing (percent values)
+            if cpu_lines:
+                if not process_lines(
+                    cpu_lines,
+                    "F8",
+                    "CPU",
+                    ["Check Box 39"],
+                    warn_threshold=75,
+                    value_func=lambda line: f"{line.strip()}%"
+                ):
+                    return
 
-            # All Licenses
+            # Memory data processing (percent values)
+            if memory_lines:
+                if not process_lines(
+                    memory_lines,
+                    "F8",
+                    "Memory",
+                    ["Check Box 41"],
+                    warn_threshold=75,
+                    value_func=lambda line: f"{line.strip()}%"
+                ):
+                    return
+
+            # 'Alle Benodigde licenties aanwezig' checkboxes (C35)
             if self.chk_vars["all_licenses"].get():
-                logger.info("Processing All Licenses checkboxes")
-                max_idx = max(len(servers_lines), len(trendstorage_lines), len(cpu_lines), len(memory_lines), 1)
-                for idx in range(max_idx):
+                for idx in range(6):
                     sheet, sheet_name = get_sheet(idx)
-                    if not sheet: continue
+                    if not sheet:
+                        continue
                     try:
                         unprotect(sheet)
                     except RuntimeError:
                         return
-                    set_checkbox(sheet, "CheckBox_C35", sheet_name)
+                    for cb_idx in range(35, 41):
+                        cb_name = f"Check Box {cb_idx}"
+                        set_checkbox(sheet, cb_name, sheet_name)
                     protect(sheet)
 
-            # Save workbook
-            try:
-                wb.save()
-                logger.info(f"Workbook saved at {edit_path}")
-            except Exception as e:
-                logger.error(f"Failed to save workbook: {e}")
-                self.after(0, self._handle_error, f"Failed to save the workbook:\n{e}")
-                return
-
+            wb.save()
+            logger.info(f"Workbook saved successfully at {edit_path}")
             wb.close()
             app.quit()
-            logger.info("Workbook closed and Excel app quit")
 
             if warning_triggered:
-                logger.warning("Warning threshold triggered, showing warning messagebox")
-                self.after(0, lambda: messagebox.showwarning("Warning", "Warning: Some values exceeded 80% threshold.\nRelevant checkboxes have been marked."))
-            else:
-                logger.info("Excel file successfully updated, showing info messagebox")
-                self.after(0, lambda: messagebox.showinfo("Success", "Excel file successfully updated."))
+                self.after(0, lambda: messagebox.showwarning(
+                    "Warning",
+                    "Some values exceeded 80%. Please review the checklist."
+                ))
 
-        except RuntimeError:
-            logger.error("RuntimeError occurred, cleaning up Excel objects")
-            try:
-                wb.close()
-            except Exception:
-                pass
-            try:
-                app.quit()
-            except Exception:
-                pass
-            return
+            self.after(0, lambda: messagebox.showinfo("Success", "Excel writing completed successfully."))
+
         except Exception as e:
-            logger.exception("Unexpected error")
+            logger.exception("Exception during Excel writing")
             self.after(0, self._handle_error, f"An error occurred:\n{e}")
-            try:
-                wb.close()
-            except Exception:
-                pass
-            try:
-                app.quit()
-            except Exception:
-                pass
-            return
         finally:
-            logger.info("Resetting UI after Excel operation")
-            self.after(0, self._reset_ui)
+            self.after(0, self._finalize_ui)
 
     def _handle_error(self, message):
-        logger.error(f"Error shown to user: {message}")
+        """
+        Show an error message box and reset UI components.
+
+        Args:
+            message (str): Error message to display.
+        """
         messagebox.showerror("Error", message)
-        self._reset_ui()
+        self._finalize_ui()
 
     def _cancel_save(self):
-        logger.info("User cancelled save operation")
-        messagebox.showinfo("Cancelled", "Save cancelled.")
-        self._reset_ui()
+        """
+        Handle user cancellation during save dialog.
+        """
+        messagebox.showinfo("Cancelled", "Excel writing cancelled.")
+        self._finalize_ui()
 
-    def _reset_ui(self):
-        logger.debug("Resetting UI state")
+    def _finalize_ui(self):
+        """
+        Reset UI elements after Excel operation is completed or aborted.
+        """
         self.progress.stop()
         self.progress.pack_forget()
         self.write_button.config(state='normal')
-
-if __name__ == "__main__":
-    logger.info("ExcelWriterWindow started as main application")
-    root = tk.Tk()
-    root.withdraw()
-    win = ExcelWriterWindow(root)
-    win.mainloop()
+        logger.info("UI reset to ready state")

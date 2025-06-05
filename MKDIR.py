@@ -11,10 +11,25 @@ from debuglog import show_debug_log
 logger = logging.getLogger(__name__)
 
 class MKDIRApp(tk.Toplevel):
+    """
+    A Tkinter Toplevel window for creating multiple directories and optionally copying a file into each.
+
+    Features:
+    - Select base directory
+    - Input folder names (one per line)
+    - Option to copy a selected file into each created directory
+    - Progress bar to indicate creation progress
+    """
+
     def __init__(self, master=None):
+        """
+        Initialize the MKDIRApp window with widgets and event bindings.
+
+        Args:
+            master (tk.Widget, optional): Parent widget. Defaults to None.
+        """
         super().__init__(master)
         self.title("MKDIR")
-        # Remove or set always-on-top to False
         self.attributes('-topmost', False)
         self.geometry("700x450")
 
@@ -61,10 +76,18 @@ class MKDIRApp(tk.Toplevel):
         self.selected_file = None
 
     def toggle_file_button(self):
+        """
+        Enable or disable the 'Kies bestand' button based on the checkbox state.
+        """
         state = tk.NORMAL if self.copy_var.get() else tk.DISABLED
         self.file_button.config(state=state)
 
     def select_file(self):
+        """
+        Open a file dialog for selecting a file to copy into each created directory.
+
+        Updates the selected file label with the chosen file's name.
+        """
         filepath = filedialog.askopenfilename(parent=self)
         if filepath:
             self.selected_file = filepath
@@ -73,6 +96,9 @@ class MKDIRApp(tk.Toplevel):
         self.focus_force()
 
     def browse_base_path(self):
+        """
+        Open a directory selection dialog to set the base path for new directories.
+        """
         path = filedialog.askdirectory(parent=self)
         if path:
             self.base_path.set(path)
@@ -80,10 +106,18 @@ class MKDIRApp(tk.Toplevel):
         self.focus_force()
 
     def run(self):
+        """
+        Start the directory creation process in a separate thread.
+        """
         thread = threading.Thread(target=self.create_directories)
         thread.start()
 
     def create_directories(self):
+        """
+        Create directories as specified in the textbox, optionally copying a file to each.
+
+        Shows progress in the progress bar and displays message boxes for errors or completion.
+        """
         names = self.textbox.get("1.0", tk.END).strip().splitlines()
         total = len(names)
         if total == 0:
