@@ -470,10 +470,10 @@ class RapportageGenerator(tk.Toplevel):
                     data_dict[sleutel_clean] = waarde_str
         waarde_mappings = {
             "Aantal onderhoudsrapportages in contractjaar:": {
-                "1.0": "1 van 4",
-                "2.0": "2 van 4",
-                "3.0": "3 van 4",
-                "4.0": "4 van 4"
+                "1.0": "1",
+                "2.0": "2",
+                "3.0": "3",
+                "4.0": "4"
     }
 }
         # Formulier dropdowns uitlezen en mappen naar labels
