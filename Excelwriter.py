@@ -9,26 +9,23 @@ from debuglog import show_debug_log, TkinterLogHandler
 
 logger = logging.getLogger(__name__)
 
-# Attach TkinterLogHandler to root logger for GUI debuglog (only once)
+# Attach handler only once (recommended in main or top-level window)
 if not any(isinstance(h, TkinterLogHandler) for h in logging.getLogger().handlers):
-    log_handler = TkinterLogHandler()
-    log_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-    logging.getLogger().addHandler(log_handler)
+    handler = TkinterLogHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    logging.getLogger().addHandler(handler)
     logging.getLogger().setLevel(logging.INFO)
 
 class ExcelWriterWindow(tk.Toplevel):
     """
-    A Tkinter Toplevel window that provides a GUI to write data into an Excel template,
-    with options to select an Excel file, input various data sections, and write to the workbook
-    using xlwings. Supports password-protected sheets and checkboxes handling.
+    Tkinter window for writing data into an Excel template.
+    Allows selection of Excel file, input of data, and writing to the workbook using xlwings.
+    Supports password-protected sheets and checkboxes.
     """
 
     def __init__(self, master=None):
         """
         Initialize the ExcelWriterWindow UI components, variables, and event bindings.
-
-        Args:
-            master (tk.Widget, optional): Parent widget. Defaults to None.
         """
         super().__init__(master)
         self.title("ExcelWriter")
@@ -37,7 +34,7 @@ class ExcelWriterWindow(tk.Toplevel):
 
         logger.info("ExcelWriterWindow initialized")
 
-        # Frame for template path + browse + password
+        # Frame for template path, browse, and password
         path_pass_frame = ttk.Frame(self)
         path_pass_frame.pack(pady=5, fill='x', padx=10)
 
@@ -74,9 +71,9 @@ class ExcelWriterWindow(tk.Toplevel):
         for label in ["Servers", "TrendStorage Geheugen", "CPU", "Memory"]:
             self._add_text_area(label)
 
-        # Configure progress bar style and widget (initially hidden)
+        # Progress bar (initially hidden)
         style = ttk.Style(self)
-        style.theme_use(style.theme_use())  # Use current theme, do not force 'default'
+        style.theme_use(style.theme_use())
         style.configure(
             "Custom.Horizontal.TProgressbar",
             troughcolor=style.lookup('TFrame', 'background'),
@@ -102,9 +99,6 @@ class ExcelWriterWindow(tk.Toplevel):
     def _add_text_area(self, label_text):
         """
         Add a labeled text widget for user data input.
-
-        Args:
-            label_text (str): The label text for the text area.
         """
         ttk.Label(self, text=label_text + ":").pack(pady=5)
         text_area = tk.Text(self, height=6, width=80)
@@ -115,7 +109,6 @@ class ExcelWriterWindow(tk.Toplevel):
     def browse_template(self):
         """
         Open a file dialog for the user to select an Excel template file.
-        Sets the chosen path to the template_path_var variable.
         """
         logger.info("Browse template dialog opened")
         path = filedialog.askopenfilename(
@@ -130,8 +123,7 @@ class ExcelWriterWindow(tk.Toplevel):
 
     def start_edit_excel_thread(self):
         """
-        Starts the Excel editing operation in a separate daemon thread,
-        disables the write button, and shows the progress bar.
+        Start the Excel editing operation in a separate daemon thread.
         """
         logger.info("Starting Excel edit thread")
         self.progress.pack(pady=10, fill='x', padx=20)

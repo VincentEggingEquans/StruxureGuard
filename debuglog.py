@@ -1,62 +1,89 @@
 import tkinter as tk
+from tkinter import scrolledtext
 import logging
+import threading
 
-_debug_window = None
-_log_text_widget = None
-_log_messages = []  # Store all log messages here
+class DebugLogWindow:
+    """Singleton window for displaying debug logs in a Tkinter ScrolledText widget."""
+    _instance = None
+    _lock = threading.Lock()
+
+    def __init__(self):
+        self.window = None
+        self.text_widget = None
+        self.messages = []
+
+    @classmethod
+    def instance(cls) -> "DebugLogWindow":
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = DebugLogWindow()
+            return cls._instance
+
+    def show(self, master=None):
+        if self.window is None or not tk.Toplevel.winfo_exists(self.window):
+            self.window = tk.Toplevel(master)
+            self.window.title("Debug Log")
+            self.window.geometry("800x300")
+            self.text_widget = scrolledtext.ScrolledText(self.window, state='disabled')
+            self.text_widget.pack(expand=True, fill='both')
+            self.window.protocol("WM_DELETE_WINDOW", self._on_close)
+            self._refresh()
+        else:
+            self.window.lift()
+
+    def _on_close(self):
+        if self.window:
+            self.window.destroy()
+            self.window = None
+            self.text_widget = None
+
+    def add_message(self, message: str):
+        self.messages.append(message)
+        if self.text_widget:
+            try:
+                self.text_widget.after(0, self._append_message, message)
+            except RuntimeError:
+                pass
+
+    def _append_message(self, message: str):
+        if not self.text_widget:
+            return
+        self.text_widget.config(state='normal')
+        self.text_widget.insert(tk.END, message + '\n')
+        self.text_widget.see(tk.END)
+        self.text_widget.config(state='disabled')
+
+    def _refresh(self):
+        if self.text_widget:
+            self.text_widget.config(state='normal')
+            self.text_widget.delete('1.0', tk.END)
+            for msg in self.messages:
+                self.text_widget.insert(tk.END, msg + '\n')
+            self.text_widget.see(tk.END)
+            self.text_widget.config(state='disabled')
+
+    def clear(self):
+        self.messages.clear()
+        if self.text_widget:
+            self.text_widget.config(state='normal')
+            self.text_widget.delete('1.0', tk.END)
+            self.text_widget.config(state='disabled')
 
 def show_debug_log(master=None):
-    """
-    Create and display a Tkinter window showing the debug log messages.
+    """Show the debug log window. If already open, brings it to the front."""
+    DebugLogWindow.instance().show(master)
 
-    If the debug window is already open, it will be brought to the front.
-    Otherwise, a new window is created with all previously stored log messages.
+def log_to_gui(message: str):
+    """Append a log message to the debug log window."""
+    DebugLogWindow.instance().add_message(message)
 
-    Args:
-        master (tk.Widget, optional): The parent widget for the debug window. Defaults to None.
-    """
-    global _debug_window, _log_text_widget
-    if _debug_window is None or not tk.Toplevel.winfo_exists(_debug_window):
-        _debug_window = tk.Toplevel(master)
-        _debug_window.title("Debug Log")
-        _debug_window.geometry("800x300")
-        _log_text_widget = tk.Text(_debug_window, state='disabled')
-        _log_text_widget.pack(expand=True, fill='both')
-        # Insert all stored messages
-        _log_text_widget.config(state='normal')
-        for msg in _log_messages:
-            _log_text_widget.insert(tk.END, msg + '\n')
-        _log_text_widget.see(tk.END)
-        _log_text_widget.config(state='disabled')
-        _debug_window.protocol("WM_DELETE_WINDOW", _debug_window.destroy)
-    else:
-        _debug_window.lift()
-
-def log_to_gui(message):
-    """
-    Append a log message to the internal message list and update the GUI log window if visible.
-
-    Args:
-        message (str): The log message to display.
-    """
-    global _log_text_widget, _log_messages
-    _log_messages.append(message)
-    if _log_text_widget:
-        _log_text_widget.config(state='normal')
-        _log_text_widget.insert(tk.END, message + '\n')
-        _log_text_widget.see(tk.END)
-        _log_text_widget.config(state='disabled')
+def clear_debug_log():
+    """Clear all messages from the debug log window."""
+    DebugLogWindow.instance().clear()
 
 class TkinterLogHandler(logging.Handler):
-    """
-    A custom logging.Handler subclass that sends log messages to the Tkinter GUI debug window.
-    """
+    """Logging handler that sends log messages to the Tkinter debug log window."""
     def emit(self, record):
-        """
-        Format and emit a logging record to the Tkinter GUI.
-
-        Args:
-            record (logging.LogRecord): The log record to be emitted.
-        """
         msg = self.format(record)
         log_to_gui(msg)

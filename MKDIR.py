@@ -6,9 +6,16 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 from tqdm import tqdm
 import threading
-from debuglog import show_debug_log
+from debuglog import show_debug_log, TkinterLogHandler
 
 logger = logging.getLogger(__name__)
+
+# Attach handler only once (recommended in main or top-level window)
+if not any(isinstance(h, TkinterLogHandler) for h in logging.getLogger().handlers):
+    handler = TkinterLogHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(logging.INFO)
 
 class MKDIRApp(tk.Toplevel):
     """

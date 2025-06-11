@@ -5,7 +5,13 @@ from VToolBox import ToolboxWindow
 from debuglog import show_debug_log, TkinterLogHandler
 from RapportageGenerator import RapportageGenerator
 
+# Set up root logger and attach TkinterLogHandler only once
 logger = logging.getLogger(__name__)
+if not any(isinstance(h, TkinterLogHandler) for h in logging.getLogger().handlers):
+    handler = TkinterLogHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(logging.INFO)
 
 class StruxureGuardApp(tk.Tk):
     """
@@ -21,19 +27,13 @@ class StruxureGuardApp(tk.Tk):
         self.title("StruxureGuard")
         self.geometry("400x300")
 
-        # Rapportage Generator knop
+        # Rapportage Generator button
         self.report_button = ttk.Button(self, text="Rapportage Generator", command=self.open_report_generator)
         self.report_button.pack(pady=20)
 
         # Keybindings
         self.bind('<F8>', self.open_toolbox_window)
         self.bind('<Alt-l>', lambda e: show_debug_log(self))
-
-        # Setup logging to GUI
-        self.log_handler = TkinterLogHandler()
-        self.log_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-        logging.getLogger().addHandler(self.log_handler)
-        logging.getLogger().setLevel(logging.INFO)
 
         logger.info("StruxureGuard hoofdvenster gestart")
 
@@ -43,6 +43,7 @@ class StruxureGuardApp(tk.Tk):
         """
         logger.info("Toolbox venster geopend (via F8 of button)")
         win = ToolboxWindow(self)
+        win.deiconify()
         win.lift()
         win.focus_force()
 
@@ -51,7 +52,8 @@ class StruxureGuardApp(tk.Tk):
         Open de Rapportage Generator.
         """
         logger.info("Rapportage Generator venster geopend")
-        win = RapportageGenerator(self)  # Use the correct class name
+        win = RapportageGenerator(self)
+        win.deiconify()
         win.lift()
         win.focus_force()
 
