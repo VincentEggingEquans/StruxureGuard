@@ -8,7 +8,6 @@ import threading
 import win32com.client as win32
 import time
 from debuglog import show_debug_log, TkinterLogHandler
-from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 if not any(isinstance(h, TkinterLogHandler) for h in logging.getLogger().handlers):
@@ -17,8 +16,7 @@ if not any(isinstance(h, TkinterLogHandler) for h in logging.getLogger().handler
     logging.getLogger().addHandler(handler)
     logging.getLogger().setLevel(logging.INFO)
 
-def lees_formulierbesturingselementen(excel_pad: str) -> Dict[str, str]:
-    """Leest dropdownwaarden uit een Excelbestand via win32com."""
+def lees_formulierbesturingselementen(excel_pad):
     excel = None
     try:
         excel = win32.Dispatch("Excel.Application")
@@ -131,6 +129,7 @@ CONTRACTNIVEAU_TABEL = [
 class RapportageGenerator(tk.Toplevel):
     """
     Rapportage Generator window for StruxureGuard.
+    Allows user to fill in contract and installation data, import/export XML, and load Excel template data.
     """
 
     def __init__(self, master=None):
@@ -139,8 +138,7 @@ class RapportageGenerator(tk.Toplevel):
         style = ttk.Style(self)
         style.configure("InvulRood.TEntry", fieldbackground="#ffcccc")
         style.configure("InvulRood.TCombobox", fieldbackground="#ffcccc")
-        self.entry_wrappers: Dict[str, Any] = {}
-        self.entries: Dict[str, Any] = {}
+        self.entry_wrappers = {}  # veldnaam → wrapper-frame (voor styling)
         self.title("StruxureGuard - Rapportage Generator")
         self.resizable(True, True)
         self._create_widgets()
@@ -148,13 +146,15 @@ class RapportageGenerator(tk.Toplevel):
         self.after(150, self._controleer_alle_velden)
         logger.info("RapportageGenerator venster aangemaakt")
 
-    def _markeer_invullen_veld(self, widget: Any, actief: bool = True):
-        """Toon of verberg waarschuwing bij een veld."""
+    def _markeer_invullen_veld(self, widget, actief=True):
         try:
             veld = next((k for k, v in self.entries.items() if v == widget), None)
             warning_label = self.entry_wrappers.get(f"{veld}_warning")
             if warning_label:
-                warning_label.grid() if actief else warning_label.grid_remove()
+                if actief:
+                    warning_label.grid()
+                else:
+                    warning_label.grid_remove()
         except Exception as e:
             logger.warning(f"Kan veldmarkering niet aanpassen: {e}")
 
@@ -163,8 +163,7 @@ class RapportageGenerator(tk.Toplevel):
         for entry in self.entries.values():
             self._controleer_en_markeer(entry)
 
-    def _controleer_en_markeer(self, widget: Any):
-        """Controleer een veld op leegte of 'INVULLEN' en markeer indien nodig."""
+    def _controleer_en_markeer(self, widget):
         try:
             waarde = widget.get().strip()
             actief = (not waarde) or ("INVULLEN" in waarde.upper())
@@ -185,15 +184,16 @@ class RapportageGenerator(tk.Toplevel):
         final_height = min(req_height, max_height)
         self.geometry(f"{final_width}x{final_height}")
         logger.debug(f"Venstergrootte aangepast naar {final_width}x{final_height}")
-
-    def _bind_combobox_selectie(self, entry: ttk.Combobox, veldnaam: str):
-        """Bindt logica aan comboboxen, met name voor afhankelijke velden."""
+    
+    def _bind_combobox_selectie(self, entry, veldnaam):
         def controleer_waarde(event=None):
             self._controleer_en_markeer(entry)
+
             if veldnaam.strip().startswith("Aantal onderhoudsrapportages in contractjaar"):
                 waarde = entry.get().strip()
                 try:
-                    aantal = int(float(waarde.split(" ")[0]))
+                    waarde_clean = waarde.split(" ")[0]
+                    aantal = int(float(waarde_clean))
                     target_entry = self.entries.get("Meet- en regel onderhoudsrapportage:")
                     if target_entry:
                         nieuwe_waarden = [f"{i} van {aantal}" for i in range(1, aantal + 1)]
@@ -208,41 +208,47 @@ class RapportageGenerator(tk.Toplevel):
         entry.bind("<FocusOut>", controleer_waarde)
         entry.bind("<KeyRelease>", controleer_waarde)
 
-    def _aantal_rapportages_aangepast(self, widget: ttk.Combobox):
-        """Update de opties van de afhankelijke combobox als het aantal rapportages wijzigt."""
+    def _aantal_rapportages_aangepast(self, widget):
         try:
             aantal = int(widget.get())
             target_entry = self.entries.get("Meet- en regel onderhoudsrapportage:")
             if target_entry:
                 nieuwe_waarden = [f"{i} van {aantal}" for i in range(1, aantal + 1)]
                 target_entry['values'] = nieuwe_waarden
-                target_entry.set("")
+                target_entry.set("")  # wis eventuele oude waarde
                 self._controleer_en_markeer(target_entry)
         except Exception as ex:
             logger.warning(f"Kon Meet- en regel onderhoudsrapportage bijwerken: {ex}")
 
-    def _set_entry_value(self, entry: Any, value: str):
-        """Set value for an entry or combobox, with error handling and marking."""
-        try:
-            if isinstance(entry, ttk.Combobox):
-                values = list(entry['values'])
-                match = next((v for v in values if v.lower() == value.lower()), None)
-                if match:
-                    entry.set(match)
-                elif value in values:
-                    entry.set(value)
-                else:
-                    logger.warning(f"Value '{value}' not valid for combobox: {values}")
-                    entry.set('')
-            else:
-                entry.delete(0, tk.END)
-                entry.insert(0, value)
-            self._markeer_invullen_veld(entry, actief=(not value or "INVULLEN" in value.upper()))
-        except Exception as ex:
-            logger.warning(f"Could not set value '{value}' for entry: {ex}")
+    def _on_combobox_selected(self, veld, widget):
+        self._controleer_en_markeer(widget)
+        logger.debug(f"→ veld geselecteerd: {veld} | waarde: {widget.get()}")
+        logger.debug(f"Combobox gewijzigd: veld='{veld}', waarde='{widget.get()}'")
+        logger.debug(f"ON SELECT: veld='{veld}'")
+        logger.debug(f"Alle veldnamen: {list(self.entries.keys())}")
+
+        if veld.strip().startswith("Aantal onderhoudsrapportages in contractjaar"):
+            waarde = widget.get().strip()
+            try:
+                waarde_clean = waarde.split(" ")[0]  # "3 van 4" → "3"
+                aantal = int(float(waarde_clean))    # "3.0" → 3
+                target_entry = self.entries.get("Meet- en regel onderhoudsrapportage:")
+                if target_entry:
+                    nieuwe_waarden = [f"{i} van {aantal}" for i in range(1, aantal + 1)]
+                    target_entry['values'] = nieuwe_waarden
+                    target_entry.set(nieuwe_waarden[0])  # kies eerste optie
+                    self._markeer_invullen_veld(target_entry, actief=False)  # ❗ verbergen
+                    logger.info(f"Aangepaste opties voor Meet- en regel onderhoudsrapportage: {nieuwe_waarden}")
+            except Exception as ex:
+                logger.warning(f"Fout bij bijwerken van Meet- en regel onderhoudsrapportage: {ex}")
+
+
 
     def _create_widgets(self):
+        """Create all UI widgets and layout."""
         logger.info("UI-widgets aanmaken")
+        self.entries = {}
+
         combobox_velden = {
             "Contractniveau:": ["Basis", "Standaard", "Totaal"],
             "Type gebouwgebruik:": ["Kantoor (gehuurd)", "Kantoor (verhuurd)", "Kantoor eigen gebruik", "School", "Ziekenhuis", "Overig"],
@@ -315,6 +321,7 @@ class RapportageGenerator(tk.Toplevel):
 
         def plaats_secties(parent, secties):
             entry_width = 40
+            combobox_width = 37
             for titel, velden in secties.items():
                 frame = ttk.LabelFrame(parent, text=titel)
                 frame.pack(fill="x", pady=4)
@@ -331,38 +338,65 @@ class RapportageGenerator(tk.Toplevel):
 
                     if veld in combobox_velden:
                         values = combobox_velden[veld]
+
+                    if veld == "Contractniveau:":
+                        values = combobox_velden[veld]
+
                         input_container = ttk.Frame(frame)
                         input_container.grid(row=idx, column=1, padx=(0, 10), pady=2, sticky="e")
-                        input_container.columnconfigure(0, weight=1)
-                        input_container.columnconfigure(1, minsize=24 if veld == "Contractniveau:" else 20)
-                        if veld == "Contractniveau:":
-                            entry = ttk.Combobox(input_container, values=values, width=32)
-                            entry.grid(row=0, column=0, sticky="ew")
-                            help_button = ttk.Button(input_container, text="?", width=3, command=self._toon_contractniveau_popup)
-                            help_button.grid(row=0, column=1, padx=(1, 1))
-                            warning = ttk.Label(input_container, text="❗", foreground="red")
-                            warning.grid(row=0, column=2, sticky="e")
-                            warning.grid_remove()
-                        else:
-                            entry = ttk.Combobox(input_container, values=values, width=37)
-                            entry.grid(row=0, column=0, sticky="ew")
-                            warning = ttk.Label(input_container, text="❗", foreground="red")
-                            warning.grid(row=0, column=1, sticky="e")
-                            warning.grid_remove()
+                        input_container.columnconfigure(0, weight=1)     # Combobox
+                        input_container.columnconfigure(1, minsize=24)   # ? knop
+                        input_container.columnconfigure(2, minsize=20)   # ❗ waarschuwing
+
+                        entry = ttk.Combobox(input_container, values=values, width=32)
+                        entry.grid(row=0, column=0, sticky="ew")
+
+                        help_button = ttk.Button(input_container, text="?", width=3, command=self._toon_contractniveau_popup)
+                        help_button.grid(row=0, column=1, padx=(1, 1))
+
+                        warning = ttk.Label(input_container, text="❗", foreground="red")
+                        warning.grid(row=0, column=2, sticky="e")
+                        warning.grid_remove()
+
                         self.entry_wrappers[veld] = input_container
                         self.entries[veld] = entry
                         self.entry_wrappers[f"{veld}_warning"] = warning
                         self._bind_combobox_selectie(entry, veld)
+
+                    elif veld in combobox_velden:
+                        values = combobox_velden[veld]
+                        input_container = ttk.Frame(frame)
+                        input_container.grid(row=idx, column=1, padx=(0, 10), pady=2, sticky="e")
+                        input_container.columnconfigure(0, weight=1)
+                        input_container.columnconfigure(1, minsize=20)
+
+                        entry = ttk.Combobox(input_container, values=values, width=37)
+                        entry.grid(row=0, column=0, sticky="ew")
+
+                        warning = ttk.Label(input_container, text="❗", foreground="red")
+                        warning.grid(row=0, column=1, sticky="e")
+                        warning.grid_remove()
+
+                        self.entry_wrappers[veld] = input_container
+                        self.entries[veld] = entry
+                        self.entry_wrappers[f"{veld}_warning"] = warning
+                        self._bind_combobox_selectie(entry, veld)
+                        # 👇 Handmatige binding voor Aantal onderhoudsrapportages
+                        if veld == "Aantal onderhoudsrapportages in contractjaar:":
+                            logger.debug("✅ Binding toegevoegd aan combobox 'Aantal onderhoudsrapportages in contractjaar:'")
                     else:
                         input_container = ttk.Frame(frame)
                         input_container.grid(row=idx, column=1, padx=(0, 10), pady=2, sticky="e")
                         input_container.columnconfigure(0, weight=1)
                         input_container.columnconfigure(1, minsize=20)
+
                         entry = ttk.Entry(input_container, width=entry_width)
                         entry.grid(row=0, column=0, sticky="ew")
+
                         warning = ttk.Label(input_container, text="❗", foreground="red")
                         warning.grid(row=0, column=1, sticky="e")
                         warning.grid_remove()
+
                         self.entry_wrappers[veld] = input_container
                         self.entries[veld] = entry
                         self.entry_wrappers[f"{veld}_warning"] = warning
@@ -375,24 +409,44 @@ class RapportageGenerator(tk.Toplevel):
         ttk.Button(actions_frame, text="Genereer Rapportage", command=self._generate_report).grid(row=0, column=0, padx=10)
         ttk.Button(actions_frame, text="Exporteer naar XML", command=self._export_to_xml).grid(row=0, column=1, padx=10)
         ttk.Button(actions_frame, text="Importeer vanuit XML", command=self._import_from_xml).grid(row=0, column=2, padx=10)
+        
+        # for veldnaam, entry in self.entries.items():
+        #     if isinstance(entry, ttk.Entry):
+        #         entry.bind("<KeyRelease>", lambda e, w=entry: self._controleer_en_markeer(w))
+        #     elif isinstance(entry, ttk.Combobox):
+        #         def maak_combobox_handler(widget):
+        #             return lambda e: self._controleer_en_markeer(widget)
 
-        self._controleer_alle_velden()
+        #         entry.bind("<KeyRelease>", maak_combobox_handler(entry))
+        #         entry.bind("<FocusOut>", maak_combobox_handler(entry))
+        #         entry.bind("<<ComboboxSelected>>", maak_combobox_handler(entry))
+
+        
+        self._controleer_alle_velden() 
         logger.info("UI-widgets aangemaakt")
 
+
+
+        # Algemene binding voor alle comboboxen (ook deze komt na handmatige binding)
         for veldnaam, entry in self.entries.items():
             if isinstance(entry, ttk.Entry):
                 entry.bind("<KeyRelease>", lambda e, w=entry: self._controleer_en_markeer(w))
             elif isinstance(entry, ttk.Combobox):
                 self._bind_combobox_selectie(entry, veldnaam)
 
+
     def _toon_contractniveau_popup(self):
+        """Show popup with contract level explanation table."""
         logger.info("Popup contractniveau toelichting geopend")
         popup = tk.Toplevel(self)
         popup.title("Toelichting Contractniveau")
+
         style = ttk.Style(popup)
         style.configure("Bold.TREEVIEW", font=("TkDefaultFont", 10, "bold"))
+
         frame = ttk.Frame(popup)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
+
         tree = ttk.Treeview(frame, columns=CONTRACTNIVEAU_KOLOMMEN, show="headings", height=20)
         for col in CONTRACTNIVEAU_KOLOMMEN:
             tree.heading(col, text=col)
@@ -400,18 +454,22 @@ class RapportageGenerator(tk.Toplevel):
                 tree.column(col, width=450, anchor="w")
             else:
                 tree.column(col, width=70, anchor="center")
+
         tree.tag_configure("bold", font=("TkDefaultFont", 10, "bold"))
+
         for row in CONTRACTNIVEAU_TABEL:
             if all(cell == "" for cell in row[1:]):
                 tree.insert("", "end", values=row, tags=("bold",))
             else:
                 tree.insert("", "end", values=row)
+
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         tree.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
+
         ttk.Button(popup, text="Sluiten", command=popup.destroy).pack(pady=10)
         popup.update_idletasks()
         w = min(popup.winfo_reqwidth(), 1000)
@@ -420,6 +478,7 @@ class RapportageGenerator(tk.Toplevel):
         logger.debug("Popup contractniveau toelichting getoond")
 
     def _select_template(self):
+        """Let user select a template file and load Excel data if needed."""
         logger.info("Selecteer Template dialoog geopend")
         file_path = filedialog.askopenfilename(
             parent=self,
@@ -444,13 +503,14 @@ class RapportageGenerator(tk.Toplevel):
         else:
             logger.info("Geen template geselecteerd")
 
-    def _laad_templategegevens(self, excel_pad: str):
+    def _laad_templategegevens(self, excel_pad):
         logger.info(f"Probeer gegevens te laden uit Excelbestand: {excel_pad}")
         if not os.path.exists(excel_pad):
             logger.error(f"Bestand niet gevonden: {excel_pad}")
             messagebox.showerror("Fout", f"Bestand niet gevonden: {excel_pad}")
             return
 
+        # Standaarddata uit Excel uitlezen (via xlwings)
         try:
             app = xw.App(visible=False)
             wb = app.books.open(excel_pad)
@@ -488,6 +548,7 @@ class RapportageGenerator(tk.Toplevel):
                 if waarde_str:
                     data_dict[sleutel_clean] = waarde_str
 
+        # Formulier dropdowns uitlezen en mappen naar labels
         dropdown_mapping = {
             "Drop Down 1": "Contractniveau:",
             "Drop Down 2": "Aantal onderhoudsrapportages in contractjaar:",
@@ -506,13 +567,27 @@ class RapportageGenerator(tk.Toplevel):
         try:
             formulierdata = lees_formulierbesturingselementen(excel_pad)
             logger.info(f"Form Controls uitgelezen: {formulierdata}")
+
             for dropdown, waarde in formulierdata.items():
-                veld = dropdown_mapping.get(dropdown)
-                if veld and veld in self.entries:
-                    data_dict[veld] = waarde
+                if dropdown not in dropdown_mapping:
+                    foutmelding = f"Dropdown '{dropdown}' is niet bekend in dropdown_mapping."
+                    logger.error(foutmelding)
+                    messagebox.showerror("Fout in Excel-besturingselement", foutmelding)
+                    raise ValueError(foutmelding)
+
+                veld = dropdown_mapping[dropdown]
+                if veld not in self.entries:
+                    foutmelding = f"Dropdown '{dropdown}' verwijst naar onbekend veld '{veld}' in de GUI."
+                    logger.error(foutmelding)
+                    messagebox.showerror("Fout in veldmapping", foutmelding)
+                    raise ValueError(foutmelding)
+
+                data_dict[veld] = waarde
+
         except Exception as e:
             logger.warning(f"Formulierbesturingselementen niet geladen: {e}")
 
+        # Mapping naar GUI labels (uit xlwings-gegevens)
         label_mapping = {
             "Klantnaam": "Klantnaam/Gebouwnaam:",
             "Locatie": "Locatie:",
@@ -535,32 +610,69 @@ class RapportageGenerator(tk.Toplevel):
             "Aantal ruimtebedieningen aanwezig": "Aantal ruimtebedieningen aanwezig:",
             "Aantal aanwezige luchtbehandelingskasten": "Aantal aanwezige luchtbehandelingskasten:"
         }
+        # Vul velden in de GUI op basis van data_dict
         ingevulde = 0
-        aantal_rapportages_totaal = None
         for label, entry in self.entries.items():
             gui_label = label.strip()
             excel_key = next((k for k, v in label_mapping.items() if v.strip() == gui_label), gui_label)
+
             if excel_key in data_dict:
-                waarde = data_dict[excel_key]
-                if label == "Aantal onderhoudsrapportages in contractjaar:":
-                    if waarde in ["1.0", "2.0", "3.0", "4.0"]:
-                        waarde = str(int(float(waarde)))
-                    aantal_rapportages_totaal = int(waarde)
-                elif label == "Meet- en regel onderhoudsrapportage:" and aantal_rapportages_totaal is not None:
-                    opties = [f"{i} van {aantal_rapportages_totaal}" for i in range(1, aantal_rapportages_totaal + 1)]
-                    entry['values'] = opties
-                    if waarde not in opties:
-                        nummer = waarde.split("van")[0].strip()
-                        if nummer.isdigit() and 1 <= int(nummer) <= aantal_rapportages_totaal:
-                            waarde = f"{nummer} van {aantal_rapportages_totaal}"
-                        else:
-                            logger.warning(f"Ongeldige waarde '{waarde}' voor veld '{label}' bij totaal={aantal_rapportages_totaal}")
+                try:
+                    waarde = data_dict[excel_key]
+
+        # Stap 1: verwerk aantal rapportages
+                    if label == "Aantal onderhoudsrapportages in contractjaar:":
+                        if waarde in ["1.0", "2.0", "3.0", "4.0"]:
+                            waarde = str(int(float(waarde)))
+                        aantal_rapportages_totaal = int(waarde)
+
+                    # Stap 2: verwerk meet- en regel rapportage
+                    elif label == "Meet- en regel onderhoudsrapportage:":
+                        if aantal_rapportages_totaal is not None:
+                            opties = [f"{i} van {aantal_rapportages_totaal}" for i in range(1, aantal_rapportages_totaal + 1)]
+                            entry['values'] = opties
+
+                            if waarde not in opties:
+                                # Probeer alleen nummer uit tekst te halen (bijv. "2 van 3" → "2")
+                                nummer = waarde.split("van")[0].strip()
+                                if nummer.isdigit() and 1 <= int(nummer) <= aantal_rapportages_totaal:
+                                    waarde = f"{nummer} van {aantal_rapportages_totaal}"
+                                else:
+                                    logger.warning(f"Ongeldige waarde '{waarde}' voor veld '{label}' bij totaal={aantal_rapportages_totaal}")
+                                    continue
+
+                    # Veld invullen
+                    if isinstance(entry, ttk.Combobox):
+                        bestaande_waarden = list(entry['values'])
+                        matches = [opt for opt in bestaande_waarden if opt.lower() == str(waarde).lower()]
+                        if matches:
+                            waarde = matches[0]
+                        elif waarde not in bestaande_waarden:
+                            foutmelding = f"Waarde '{waarde}' is ongeldig voor veld '{label}'. Toegestane waarden: {bestaande_waarden}"
+                            logger.error(foutmelding)
+                            messagebox.showerror("Ongeldige waarde in Excel", foutmelding)
                             continue
-                self._set_entry_value(entry, waarde)
-                ingevulde += 1
+
+                        entry.set(waarde)
+
+                    else:
+                        entry.delete(0, tk.END)
+                        entry.insert(0, waarde)
+
+                    waarde_upper = str(waarde).strip().upper()
+                    actief = not waarde_upper or "INVULLEN" in waarde_upper
+                    self._markeer_invullen_veld(entry, actief=actief)
+                    ingevulde += 1
+
+                except Exception as ex:
+                    logger.warning(f"Kon veld '{label}' niet invullen: {ex}")
+            else:
+                logger.debug(f"Geen waarde gevonden voor veld: {label}")
+
         logger.info(f"{ingevulde} velden automatisch ingevuld vanuit Excel en formulierbesturingselementen.")
 
     def _generate_report(self):
+        """Print all current values to the console (placeholder for actual report generation)."""
         logger.info("Genereer Rapportage gestart")
         print("Rapportage wordt gegenereerd met de volgende gegevens:")
         print(f"Wachtwoord: {self.password_entry.get()}")
@@ -570,6 +682,7 @@ class RapportageGenerator(tk.Toplevel):
         logger.info("Rapportage gegenereerd (console output)")
 
     def _export_to_xml(self):
+        """Export all current values to an XML file."""
         logger.info("Exporteren naar XML gestart")
         data = {
             "Wachtwoord": self.password_entry.get(),
@@ -594,6 +707,7 @@ class RapportageGenerator(tk.Toplevel):
             logger.info("Exporteren naar XML geannuleerd door gebruiker")
 
     def _import_from_xml(self):
+        """Import values from an XML file and fill in the fields."""
         logger.info("Importeren vanuit XML gestart")
         file_path = filedialog.askopenfilename(
             parent=self,
@@ -607,13 +721,32 @@ class RapportageGenerator(tk.Toplevel):
             for veld in root.findall("Veld"):
                 naam = veld.attrib.get("naam")
                 waarde = veld.text or ""
-                if naam is not None:
-                    entry = self.entries.get(naam)
-                    if entry:
-                        self._set_entry_value(entry, waarde)
+                entry = self.entries.get(naam)
+                if entry:
+                    if isinstance(entry, ttk.Combobox):
+                        bestaande_waarden = list(entry['values'])
+                        if waarde not in bestaande_waarden:
+                            matches = [opt for opt in bestaande_waarden if opt.lower() == waarde.lower()]
+                            if matches:
+                                waarde = matches[0]
+                            else:
+                                foutmelding = f"Waarde '{waarde}' is ongeldig voor veld '{naam}' (XML). Toegestane waarden: {bestaande_waarden}"
+                                logger.error(foutmelding)
+                                messagebox.showerror("Ongeldige waarde bij XML-import", foutmelding)
+                                continue
+                        entry.set(waarde)
+                        waarde_upper = waarde.strip().upper()
+                        actief = not waarde_upper or "INVULLEN" in waarde_upper
+                        self._markeer_invullen_veld(entry, actief=actief)
                         if naam == "Aantal onderhoudsrapportages in contractjaar:":
                             self._aantal_rapportages_aangepast(entry)
-                        ingevulde += 1
+                    else:
+                        entry.delete(0, tk.END)
+                        entry.insert(0, waarde)
+                        waarde_upper = waarde.strip().upper()
+                        actief = not waarde_upper or "INVULLEN" in waarde_upper
+                        self._markeer_invullen_veld(entry, actief=actief)
+                    ingevulde += 1
             self._adjust_window_size()
             logger.info(f"Gegevens succesvol geïmporteerd uit XML ({ingevulde} velden ingevuld)")
             messagebox.showinfo("Succes", "Gegevens succesvol geïmporteerd uit XML.")
@@ -627,10 +760,14 @@ class RapportageGenerator(tk.Toplevel):
         loading_win.resizable(False, False)
         loading_win.transient(self)
         loading_win.configure(padx=20, pady=20)
+
         ttk.Label(loading_win, text=bericht, font=("Segoe UI", 11)).pack(pady=(0, 15))
+
         pb = ttk.Progressbar(loading_win, mode='indeterminate', length=280)
         pb.pack()
         pb.start(10)
+
+        # Centraal op het scherm positioneren
         loading_win.update_idletasks()
         screen_width = loading_win.winfo_screenwidth()
         screen_height = loading_win.winfo_screenheight()
@@ -639,4 +776,5 @@ class RapportageGenerator(tk.Toplevel):
         x = int((screen_width / 2) - (window_width / 2))
         y = int((screen_height / 2) - (window_height / 2))
         loading_win.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
         return loading_win
